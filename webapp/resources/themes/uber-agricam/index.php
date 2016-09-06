@@ -59,7 +59,7 @@
 									<h2>Follow the project on ...</h2>
 									<ul class="icons">
 										<li><a href="#" class="icon fa-instagram"><span class="label">Instagram</span></a></li>
-										<li><a href="#" class="icon fa-github"><span class="label">GitHub</span></a></li>
+										<li><a href="https://github.com/GrameenGhana/agricam" class="icon fa-github"><span class="label">GitHub</span></a></li>
 									</ul>
 								</section>
 								<p class="copyright">
