@@ -1,9 +1,6 @@
 vendor/
 node_modules/
 
-webapp/gallery-images/*
-webapp/resources/cache/*
-
 # Laravel 4 specific
 bootstrap/compiled.php
 app/storage/
