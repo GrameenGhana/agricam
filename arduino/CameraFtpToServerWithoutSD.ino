@@ -12,8 +12,9 @@
 #define FONA_RX  14 //connect to FONA RX
 #define FONA_TX  15 //connect to FONA TX
 #define FONA_RST 16 //Only connected for testing and debuging purposes
-#define FONA_KEY 17 //connection to FONA KEY - Not connected
-#define FONA_PS 18 //connect to FONA PS
+
+#define FONA_KEY 17 //connection to FONA KEY - Not connected until after testing and debugging
+#define FONA_PS 18 //connect to FONA PS - - Not connected used to power off/on GSM
 ////////////////////////////////////
 
 
@@ -40,7 +41,7 @@ unsigned long ATtimeOut = 10000;
 
  
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
-Adafruit_FONA fona = Adafruit_FONA( FONA_RST); //This declaration resets the GSM everytime the arduino isturned of
+Adafruit_FONA fona = Adafruit_FONA( FONA_RST); //This declaration resets the GSM everytime the arduino isturned off
 //Date and time needs to be recalibrated after every reset
 
 SoftwareSerial *fonaSerial = &fonaSS;
@@ -81,11 +82,6 @@ void setup() {
 
 // initialize SPI:
   SPI.begin();
-  
-  //Change to JPEG capture mode and initialize the OV2640 module
- // myCAM1.set_format(JPEG);
- // myCAM1.InitCAM();
-  //myCAM1.OV5642_set_JPEG_size(OV5642_2592x1944);
   ////////////////////////////////////
 
   myCAM1.set_bit(ARDUCHIP_TIM, VSYNC_LEVEL_MASK);
@@ -177,7 +173,7 @@ void setup() {
  
 
   Serial.println(F("Setting GSM!" ));
-  //Reset GSM, Connect to network
+  //Reset GSM, Connect to network, Check network status
   fonaSerial->begin(4800);
   if (! fona.begin(*fonaSerial)) {
     Serial.println(F("Couldn't find FONA"));
@@ -188,7 +184,7 @@ void setup() {
     while(!(fona.getNetworkStatus() == 1));
   delay(2000); 
 
-
+//Set the dateTime.
  fonaSS.println(F("AT+CCLK=\"16/09/06,10:41:45+22\""));
  delay(2000);
    //turnOffFona();
@@ -206,22 +202,22 @@ void loop()
 /////////////////////////
  syncDateTime();
 
- //CAM1 - connect to server, capture and upload image
+ //CAM1 - connect to server, capture and upload image, enable low power
   connectToServer();
   captureUploadImage(myCAM1);
   timer(5);
 
-//CAM2 - connect to server, capture and upload image
+//CAM2 - connect to server, capture and upload image, enable low power
   connectToServer();
   captureUploadImage(myCAM2);
   timer(5);
 
-//CAM3 - connect to server, capture and upload image
+//CAM3 - connect to server, capture and upload image, enable low power
   connectToServer();
   captureUploadImage(myCAM3);
   timer(5);
 
-//CAM4 - connect to server, capture and upload image
+//CAM4 - connect to server, capture and upload image, enable low power
   connectToServer();
   captureUploadImage(myCAM4);
   timer(5);
