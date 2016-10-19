@@ -4,6 +4,9 @@
 #include <Wire.h>
 #include <ArduCAM.h>
 #include <SPI.h>
+#include <CheapStepper.h>
+
+
 ////////////////////////////////////
 #if defined(__arm__)
 #include <itoa.h>
@@ -18,22 +21,32 @@
 ////////////////////////////////////
 
 
-Sleep sleep;
-unsigned long sleepTime = 1200000; //Sleep for 20 mins
+CheapStepper stepper = CheapStepper(2,3,4,5);
+// here we declare our stepper using default pins:
+// arduino pin <--> pins on ULN2003 board:
+// 8 <--> IN1
+// 9 <--> IN2
+// 10 <--> IN3
+// 11 <--> IN4
+/////////////////////////
 
-const int CS1 = 4;
-const int CS2 = 5;
-const int CS3 = 6;
-const int CS4 = 7;
+
+Sleep sleep;
+unsigned long sleepTime = 60000; //Sleep for 2 mins
+
+const int CS1 = 10;
+
+
 bool cam = true;
+boolean moveClockwise = true;
 uint32_t jpglen;
 uint8_t vid, pid;
 uint8_t temp,temp_last;
 int keyTime = 2000;
 
-String _month, _day = "";
+String _date, _time;
+String image_name;
 
-int Years, Months, Days, Hours, Mins, Secs = 0;
 
 unsigned long ATtimeOut = 10000;
 
@@ -45,10 +58,8 @@ Adafruit_FONA fona = Adafruit_FONA( FONA_RST); //This declaration resets the GSM
 //Date and time needs to be recalibrated after every reset
 
 SoftwareSerial *fonaSerial = &fonaSS;
+
 ArduCAM myCAM1(OV5642, CS1);
-ArduCAM myCAM2(OV5642, CS2);
-ArduCAM myCAM3(OV5642, CS3);
-ArduCAM myCAM4(OV5642, CS4);
 
 ArduCAM uniCAM; //Placeholder to save the reference to the last used CAM
 uint8_t captureUploadImage(ArduCAM myCAM); //Declaration of CAM capture and Upload function
@@ -66,14 +77,22 @@ void setup() {
 ///////////////////////////////////////
   Serial.begin(115200); 
   Serial.println(F("AgriCAM Start!" ));
+
+  Serial.println(F("Setting up motor!" ));
+  stepper.setRpm(6);
+  stepper.setTotalSteps(4096);
+
   //turnOnFona();
   delay(2000);
 
+  Serial.print(F("stepper RPM: ")); Serial.print(stepper.getRpm());
+  Serial.println();
+
+  //stepper.moveDegrees (moveClockwise, 180);
+
 // set the SPI_CS as an output:
   pinMode(CS1, OUTPUT);
-  pinMode(CS2, OUTPUT);
-  pinMode(CS3, OUTPUT);
-  pinMode(CS4, OUTPUT);
+ 
 
   //GSM Power Switch key
   pinMode(FONA_KEY,OUTPUT); 
@@ -85,24 +104,15 @@ void setup() {
   ////////////////////////////////////
 
   myCAM1.set_bit(ARDUCHIP_TIM, VSYNC_LEVEL_MASK);
-  myCAM2.set_bit(ARDUCHIP_TIM, VSYNC_LEVEL_MASK);
-  myCAM3.set_bit(ARDUCHIP_TIM, VSYNC_LEVEL_MASK);
-  myCAM4.set_bit(ARDUCHIP_TIM, VSYNC_LEVEL_MASK);
   
   myCAM1.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
-  myCAM2.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
-  myCAM3.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
-  myCAM4.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
-
 //////////////////////////////////////////////////////////////////////
 
   //Check if the ArduCAM SPI bus is OK for all 4 cams
   //This had to be done one after the other because of battery constraints
   myCAM1.clear_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);
   
-  myCAM1.set_format(JPEG);
-  myCAM1.InitCAM();
-  myCAM1.OV5642_set_JPEG_size(OV5642_1280x720);
+ 
   
   myCAM1.write_reg(ARDUCHIP_TEST1, 0x55);
   temp = myCAM1.read_reg(ARDUCHIP_TEST1);
@@ -111,62 +121,31 @@ void setup() {
     Serial.println(F("SPI1 interface Error!"));
     cam = false;
     while(1);
-  }myCAM1.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
+  }
   
+    Serial.println(F("OV5642 detected."));
+  
+  myCAM1.set_format(JPEG);
+  Serial.println(F("Fomat set."));
+  myCAM1.InitCAM();
+  Serial.println(F("CAM1 Initialized."));
+  myCAM1.OV5642_set_JPEG_size(OV5642_640x480);
+ // Resolutions
+//OV5642_320x240, OV5642_640x480, OV5642_1280x720, OV5642_1920x1080, 
+//2048x1563, 2592x1944
 
 
-  myCAM2.clear_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);
-  myCAM2.set_format(JPEG);
-  myCAM2.InitCAM();
-  myCAM2.OV5642_set_JPEG_size(OV5642_1280x720);
-  myCAM2.write_reg(ARDUCHIP_TEST1, 0x55);
-  temp = myCAM2.read_reg(ARDUCHIP_TEST1);
-  if (temp != 0x55)
-  {
-    Serial.println(F("SPI1 interface Error!"));
-    cam = false;
-    while(1);
-  }myCAM2.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
-
-
-  myCAM3.clear_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);
-  myCAM3.set_format(JPEG);
-  myCAM3.InitCAM();
-  myCAM3.OV5642_set_JPEG_size(OV5642_1280x720);
-  myCAM3.write_reg(ARDUCHIP_TEST1, 0x55);
-  temp = myCAM3.read_reg(ARDUCHIP_TEST1);
-  if (temp != 0x55)
-  {
-    Serial.println(F("SPI1 interface Error!"));
-    cam = false;
-    while(1);
-  }myCAM3.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
-
-  myCAM4.clear_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);
-  myCAM4.set_format(JPEG);
-  myCAM4.InitCAM();
-  myCAM4.OV5642_set_JPEG_size(OV5642_1280x720);
-  myCAM4.write_reg(ARDUCHIP_TEST1, 0x55);
-  temp = myCAM4.read_reg(ARDUCHIP_TEST1);
-  if (temp != 0x55)
-  {
-    Serial.println("SPI4 interface Error!");
-    cam = false;
-    while(1);
-  }myCAM4.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
+  
+  Serial.println(F("CAM1 size set."));
+  
+  myCAM1.set_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK);//enable low power
   
 /////////////////////////////////////////////////////////////////////////
   
   
   myCAM1.clear_fifo_flag();
-  myCAM2.clear_fifo_flag();
-  myCAM3.clear_fifo_flag();
-  myCAM4.clear_fifo_flag();
-  
   myCAM1.write_reg(ARDUCHIP_FRAMES, 0x00);
-  myCAM2.write_reg(ARDUCHIP_FRAMES, 0x00);
-  myCAM3.write_reg(ARDUCHIP_FRAMES, 0x00);
-  myCAM4.write_reg(ARDUCHIP_FRAMES, 0x00);
+  
   ////////////////////////////////////////////////////
 
 
@@ -184,105 +163,66 @@ void setup() {
     while(!(fona.getNetworkStatus() == 1));
   delay(2000); 
 
-//Set the dateTime.
- fonaSS.println(F("AT+CCLK=\"16/09/06,10:41:45+22\""));
- delay(2000);
-   //turnOffFona();
+  
+
+  
 }
 
 
  
 void loop()
-{
-  
+{ 
   //turnOnFona();
   
-  delay(5000);
+  delay(2000);
   setupGPRS();
-/////////////////////////
- syncDateTime();
-
- //CAM1 - connect to server, capture and upload image, enable low power
-  connectToServer();
-  captureUploadImage(myCAM1);
-  timer(5);
-
-//CAM2 - connect to server, capture and upload image, enable low power
-  connectToServer();
-  captureUploadImage(myCAM2);
-  timer(5);
-
-//CAM3 - connect to server, capture and upload image, enable low power
-  connectToServer();
-  captureUploadImage(myCAM3);
-  timer(5);
-
-//CAM4 - connect to server, capture and upload image, enable low power
-  connectToServer();
-  captureUploadImage(myCAM4);
-  timer(5);
-
   
-//////////////////////
+  getSyncedTime();
+
+  for(int i = 0; i < 4; i++){
+  moveStepperMotor90(1024);
+  getImageName();
+  
+  connectToServer();
+  openPutSession();
+  
+  //captureUploadImage(myCAM1);
+  delay(5000);
+
+ }
+ 
   disconnectGPRS();
 
   //turnOffFona();
 
-    Serial.println("\nSleeping "); 
-    delay(100); //delay to allow serial to fully print before sleep
-    
+    Serial.println(F("\nSleeping ")); 
+    delay(100); //delay to allow serial to fully print before sleep  
     sleep.pwrDownMode(); //set sleep mode - sets arduino in a low power state to conserve energy
     sleep.sleepDelay(sleepTime); //sleep for: sleepTime declared above
+  moveClockwise = !moveClockwise;
   
 }
 
 
 
 
-
-void turnOnFona()
-{ 
-  if(! digitalRead(FONA_PS)) { //Check if it's On already. LOW is off, HIGH is ON.
-        Serial.print(F("FONA was OFF, Powering ON: "));
-        digitalWrite(FONA_KEY,LOW); //pull down power set pin
-        unsigned long KeyPress = millis(); 
-        while(KeyPress + keyTime >= millis()) {} //wait seconds
-        digitalWrite(FONA_KEY,HIGH); //pull it back up again
-        delay(1000);
-        fonaSerial->begin(4800);
-        
-  }     
-  else {
-        Serial.println(F("FONA Already On, Did Nothing"));
-    }
-}
-
-void turnOffFona()
-{//does the opposite of turning the FONA ON (ie. OFF)
-    if(digitalRead(FONA_PS)) { //check if FONA is OFF
-        Serial.print(F("FONA was ON, Powering OFF: ")); 
-        digitalWrite(FONA_KEY,LOW);
-        unsigned long KeyPress = millis();
-        while(KeyPress + keyTime >= millis()) {}
-        digitalWrite(FONA_KEY,HIGH);
-        Serial.println(F("FONA is Powered Down"));
-    } else {
-        Serial.println(F("FONA is already off, did nothing."));
-    }
-}
+void getSyncedTime(){
+ 
+   if(fona.enableNTPTimeSync(true, F("pool.ntp.org")))
+   Serial.println(F("Time Synced" ));
+   
+   
+  }
 
 
 
 void setupGPRS()
 {
+  
   fonaSS.println(F("AT+CSQ")); // Signal quality check
   delay(100); 
   ShowSerialData();// this code is to show the data from gprs shield, in order to easily see the process of how the gprs shield submit a http request, and the following is for this purpose too.
-  
-  fonaSS.println(F("AT+CGATT?")); //Attach or Detach from GPRS Support
-  delay(100); 
-  ShowSerialData();
-  
+ 
   fonaSS.println(F("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\""));//setting the SAPBR, the connection type is using gprs
   delay(1000);
   ShowSerialData();
@@ -291,62 +231,62 @@ void setupGPRS()
   delay(3000); 
   ShowSerialData();
  
-  fonaSS.println(F("AT+SAPBR=1,1"));//setting the SAPBR
-  delay(2000);
-  ShowSerialData();
 
+if (!fona.enableGPRS(false))
+Serial.println(F("Failed to turn off"));
+delay(1000);
+
+if(!fona.enableGPRS(true))
+
+  while (!fona.enableGPRS(true)){
+    for(int i = 0; i<6; i++){
+    if(i == 5) loop();
+    
+    }
+    };
+          Serial.println(F("GPRS enabled"));
+
+          
+          
   fonaSS.println(F("AT+SAPBR =2,1")); //Querry GPRS for IP
   delay(2000);
   ShowSerialData();
+
 ////////////////////////////////////////////
 }
 
 
-
-
-void syncDateTime(){
+void getImageName(){
   
+  char buffer[23];
+        fona.getTime(buffer, 23);  // make sure replybuffer is at least 23 bytes!
+        Serial.print(F("Date/Time is ")); Serial.println(buffer);
+    _date = "";
+    _time ="";
+    
+    for(int i = 1; i<9; i++)
+  _date = _date += buffer[i];
+
+  for(int j = 10; j<15; j++)
+  _time = _time += buffer[j];
+
+  _date.replace("/", "_");
    
-   //Setting the time
-   fonaSS.println("AT+CCLK?");
-   
-    while (fonaSS.available() != 0){
-      if (!(fonaSS.available() != 0)) break;     
-      }
-           
-     Years = fonaSS.parseInt();
-     Months = fonaSS.parseInt();
-     Days = fonaSS.parseInt();
-     //Hours = fonaSS.parseInt();
-     //Mins = fonaSS.parseInt();
-     //Secs = fonaSS.parseInt();
-     
-      if (Months <= 9 ){
-      _month = "0" + String(Months);
-      
-        }else _month = String(Months);
-
-       if (Days <= 9 ){
-      _day = "0" + String(Days);
-      
-        }else _day = String(Days);       
-}
-
-
+        
+        Serial.print(F("Date is ")); Serial.print(_date); 
+        Serial.print(F(" and time is ")); Serial.print(_time); 
+        Serial.println(); 
+        
+        image_name =  _date + "_" + _time;
+        
+        }
 
 
 void connectToServer(){
-  char str[8]; 
-  static int k = 5;
-  k = k + 1;
-  itoa(k, str, 10);
-  //strcat(str, ".jpg"); 
-     
 
-String image_name = String(Years) + "_" + _month + "_" + _day + "_" + str;
-  
-   
-  fonaSS.println(F("AT+FTPCID=1"));
+
+
+ fonaSS.println(F("AT+FTPCID=1"));
   delay(2000);
   ShowSerialData();
 
@@ -362,9 +302,13 @@ String image_name = String(Years) + "_" + _month + "_" + _day + "_" + str;
   fonaSS.println(F("AT+FTPPW=\"ftp@ftp.com\""));
   delay(2000);
   ShowSerialData();
+  }
 
- 
-  fonaSS.println("AT+FTPPUTNAME=\"CAM1-20" + image_name + ".jpg\" ");
+
+
+void openPutSession(){
+  
+  fonaSS.println("AT+FTPPUTNAME=\"CAM2-20" + image_name + ".jpg\" ");
   delay(2000);
   ShowSerialData();
 
@@ -372,16 +316,21 @@ String image_name = String(Years) + "_" + _month + "_" + _day + "_" + str;
   delay(2000);
   ShowSerialData();
 
-  fonaSS.println(F("AT+FTPPUT=1"));
-  delay(5000);
-  ShowSerialData();
-  }
+  //fonaSS.println(F("AT+FTPPUT=1"));
+  //delay(5000);
+  //ShowSerialData();
 
+if (sendATcommand("AT+FTPPUT=1", "+FTPPUT:1,1,", 6000) != 1){
+  
+  captureUploadImage(myCAM1);
+  
+  }
+  }
 
  
 uint8_t captureUploadImage(ArduCAM myCAM)
-{ uniCAM = myCAM;
-
+{ //uniCAM = myCAM;
+  int reply;
   myCAM.clear_bit(ARDUCHIP_GPIO,GPIO_PWDN_MASK); //Power up Camera
   myCAM.flush_fifo();
   delay(1000);
@@ -394,7 +343,7 @@ uint8_t captureUploadImage(ArduCAM myCAM)
   Serial.println(F("CAM Low power enabled"));
   if (cam == true)
   {
-    Serial.println("CAM Capture Done!");
+    Serial.println(F("CAM Capture Done!"));
     }
 
   
@@ -408,19 +357,23 @@ uint8_t captureUploadImage(ArduCAM myCAM)
 
      //While Imagesize is > 1000, tell ftp we want to upload per 1000 bytes.
       while(jpglen >= 1000){
-          int answer = sendATcommand("AT+FTPPUT=2,1000","+FTPPUT:2,1000",3000);
-          if (answer != 1){
+
+        do{
+          reply = sendATcommand("AT+FTPPUT=2,1000","+FTPPUT:2,1000",7500);
+          Serial.println(reply);
+          if (reply != 1){
           for(int i = 0; i < 1000; i++){
             temp_last = temp;
             temp = myCAM.read_fifo();
             fonaSS.write(temp);
           }
-          jpglen -= 1000;              
+          jpglen -= 1000; 
+          
+          }else reply = 1;
+          
+          
+      }while (reply == 1);
       
-      }
-      else{
-        captureUploadImage(uniCAM);
-       }
 } 
         String ScomA = "";
         String ScomB = "";
@@ -439,23 +392,25 @@ uint8_t captureUploadImage(ArduCAM myCAM)
         ScomB.toCharArray(CcomB,ScomB.length());
 
         //What's left of Imagesize is < 1000, tell FTP we want to upload remaining bytes
-        sendATcommand(CcomA,CcomB,3000);
+        sendATcommand(CcomA,CcomB,5000);
         for(int i = 0; i < jpglen; i++){ //Upload remaining bytes to ftp
           temp_last = temp;
             temp = myCAM.read_fifo();
             fonaSS.write(temp);
         }
-    //Close FTP connection
-    sendATcommand("AT+FTPPUT=2,0", "OK", 5000);
 
+  //Transfer complete   
+    //Close FTP connection
+    sendATcommand("AT+FTPPUT=2,0", "OK", 10000);
+
+  
     //fonaSS.println(F("AT+FTPPUT=2,0"));
     //delay(2000);
     //ShowSerialData();
-
     
-     
     //Clear the capture done flag
-    myCAM.clear_fifo_flag();   
+    myCAM.clear_fifo_flag(); 
+      
 }
 
 
@@ -504,15 +459,63 @@ int8_t sendATcommand(char* ATcommand, char* expected_answer, unsigned int timeou
         return answer;
 }
 
-void timer (int t){
-    for (int i = t; i > 0; i--){
-  delay(1000);
-  } 
-    }
 
 void disconnectGPRS(){
-  sendATcommand("AT+SAPBR=0,1", "OK", 3000);
+  
+ if (!fona.enableGPRS(false))
+          Serial.println(F("Failed to turn off"));
+          else 
+          Serial.println(F("GSM off"));
+  
   }
+
+
+void moveStepperMotor90(int _step ){
+  for (int s = 0; s < _step; s++){
+    stepper.step(moveClockwise);
+    int nStep = stepper.getStep();
+
+  
+   // if (nStep % _step == 0){ 
+     // Serial.print("Moved 90deg at step position: "); Serial.print(nStep);
+      //Serial.println();
+   // }
+  }
+  delay(1000);
+  }
+
+void turnOnFona()
+{ 
+  if(! digitalRead(FONA_PS)) { //Check if it's On already. LOW is off, HIGH is ON.
+        Serial.print(F("FONA was OFF, Powering ON: "));
+        digitalWrite(FONA_KEY,LOW); //pull down power set pin
+        unsigned long KeyPress = millis(); 
+        while(KeyPress + keyTime >= millis()) {} //wait seconds
+        digitalWrite(FONA_KEY,HIGH); //pull it back up again
+        delay(1000);
+        fonaSerial->begin(4800);       
+  
+  } 
+      
+  else {
+        Serial.println(F("FONA Already On, Did Nothing"));
+    }
+}
+
+void turnOffFona()
+{//does the opposite of turning the FONA ON (ie. OFF)
+    if(digitalRead(FONA_PS)) { //check if FONA is OFF
+        Serial.print(F("FONA was ON, Powering OFF: ")); 
+        digitalWrite(FONA_KEY,LOW);
+        unsigned long KeyPress = millis();
+        while(KeyPress + keyTime >= millis()) {}
+        digitalWrite(FONA_KEY,HIGH);
+        Serial.println(F("FONA is Powered Down"));
+    } else {
+        Serial.println(F("FONA is already off, did nothing."));
+    }
+}
+
 
 
 
